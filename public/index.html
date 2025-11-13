@@ -1,43 +1,31 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Wireless Accelerometer Visualizer</title>
-  <script src="/socket.io/socket.io.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body>
-  <h2>Real-Time 3-Axis Accelerometer Data (Wireless)</h2>
-  <canvas id="chart" width="600" height="300"></canvas>
+  <head>
+    <title>Accelerometer Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
 
-  <script>
-    const socket = io();
-    const ctx = document.getElementById('chart').getContext('2d');
-    const data = {
-      labels: [],
-      datasets: [
-        { label: 'X', borderColor: 'red', data: [] },
-        { label: 'Y', borderColor: 'green', data: [] },
-        { label: 'Z', borderColor: 'blue', data: [] },
-      ]
-    };
+  <body>
+    <h1>Real-Time Accelerometer Data</h1>
 
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data,
-      options: { animation: false, scales: { x: { display: false } } }
-    });
+    <div class="data-box">
+      <div class="data-item">
+        <span class="label">X:</span>
+        <span id="x-val" class="value">0</span>
+      </div>
 
-    socket.on('accelData', ({ x, y, z }) => {
-      data.labels.push('');
-      data.datasets[0].data.push(x);
-      data.datasets[1].data.push(y);
-      data.datasets[2].data.push(z);
-      if (data.labels.length > 100) {
-        data.labels.shift();
-        data.datasets.forEach(d => d.data.shift());
-      }
-      chart.update();
-    });
-  </script>
-</body>
+      <div class="data-item">
+        <span class="label">Y:</span>
+        <span id="y-val" class="value">0</span>
+      </div>
+
+      <div class="data-item">
+        <span class="label">Z:</span>
+        <span id="z-val" class="value">0</span>
+      </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+  </body>
 </html>

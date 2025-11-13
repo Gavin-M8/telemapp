@@ -1,0 +1,24 @@
+{
+  "name": "telemapp",
+  "version": "1.0.0",
+  "description": "telemetry web app",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Gavin-M8/telemapp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Gavin-M8/telemapp/issues"
+  },
+  "homepage": "https://github.com/Gavin-M8/telemapp#readme",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}

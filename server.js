@@ -17,6 +17,18 @@ app.post("/data", (req, res) => {
   res.sendStatus(200);
 });
 
+// Temporary fake data generator (remove when using ESP32)
+setInterval(() => {
+  const fake = {
+    x: (Math.random() * 2 - 1).toFixed(3),
+    y: (Math.random() * 2 - 1).toFixed(3),
+    z: (Math.random() * 2 - 1).toFixed(3),
+  };
+
+  io.emit("accelData", fake);
+}, 200); // every 200ms
+
+
 server.listen(3000, () => {
   console.log("Server running at http://localhost:3000");
 });
