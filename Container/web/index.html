@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Telemetry Plot</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    canvas {
+      max-width: 800px;
+      max-height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Real-Time Accelerometer Data</h1>
+  <canvas id="accelChart"></canvas>
+
+  <script>
+    const ctx = document.getElementById('accelChart').getContext('2d');
+
+    const data = {
+      labels: [], // timestamps
+      datasets: [
+        {
+          label: 'Ax',
+          data: [],
+          borderColor: 'red',
+          fill: false,
+        },
+        {
+          label: 'Ay',
+          data: [],
+          borderColor: 'green',
+          fill: false,
+        },
+        {
+          label: 'Az',
+          data: [],
+          borderColor: 'blue',
+          fill: false,
+        }
+      ]
+    };
+
+    const config = {
+      type: 'line',
+      data: data,
+      options: {
+        animation: false,
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Timestamp (ms)' } },
+          y: { title: { display: true, text: 'Acceleration' } }
+        }
+      }
+    };
+
+    const accelChart = new Chart(ctx, config);
+
+    const MAX_POINTS = 200; // keep last 200 samples
+
+    async function fetchData() {
+      try {
+        const response = await fetch('/data');
+        const buffer = await response.json(); // expects [{timestamp, ax, ay, az}, ...]
+        
+        data.labels = buffer.map(d => d.timestamp);
+        data.datasets[0].data = buffer.map(d => d.ax);
+        data.datasets[1].data = buffer.map(d => d.ay);
+        data.datasets[2].data = buffer.map(d => d.az);
+
+        // Keep only last MAX_POINTS points
+        data.labels = data.labels.slice(-MAX_POINTS);
+        data.datasets.forEach(ds => ds.data = ds.data.slice(-MAX_POINTS));
+
+        accelChart.update();
+      } catch (err) {
+        console.error('Error fetching data:', err);
+      }
+    }
+
+    // Poll server every 100ms
+    setInterval(fetchData, 100);
+  </script>
+</body>
+</html>
