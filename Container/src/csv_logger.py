@@ -20,19 +20,20 @@ class CSVLogger:
 
         # Write header if file is empty
         if os.path.getsize(filepath) == 0:
-            self.writer.writerow(["timestamp", "ax", "ay", "az"])
+            self.writer.writerow(["timestamp", "human_ts" "ax", "ay", "az"])
             self.file.flush()
 
-    def write(self, timestamp, ax, ay, az):
+    def write(self, timestamp, human_ts, ax, ay, az):
         """
         Append a row to the CSV file.
         :param timestamp: Timestamp in ms
+        :param human_ts: Timeastamp in human readable form
         :param ax: Acceleration X
         :param ay: Acceleration Y
         :param az: Acceleration Z
         """
         with self.lock:
-            self.writer.writerow([timestamp, ax, ay, az])
+            self.writer.writerow([timestamp, human_ts, ax, ay, az])
             self.file.flush()  # Flush immediately to reduce data loss
 
     def close(self):

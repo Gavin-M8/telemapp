@@ -2,14 +2,17 @@ version: "3.9"
 
 services:
   telemetry:
-    build: ./docker
+    build: 
+      context: .
+      dockerfile: docker/Dockerfile
     container_name: telemetry_server
     ports:
       - "5000:5000"            # Expose Flask web UI
-    devices:
-      - "/dev/ttyUSB0:/dev/ttyUSB0"  # Map your Arduino/RX device into container
+    # devices:
+    #   - "/dev/ttyUSB0:/dev/ttyUSB0"  # Map your Arduino/RX device into container
     environment:
-      - SERIAL_PORT=/dev/ttyUSB0
+      # - SERIAL_PORT=/dev/ttyUSB0
+      - USE_DUMMY=true
       - BAUD_RATE=19200
       - CSV_PATH=/app/logs/telemetry.csv
     volumes:

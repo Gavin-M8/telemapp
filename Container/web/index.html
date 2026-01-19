@@ -19,6 +19,14 @@
   <h1>Real-Time Accelerometer Data</h1>
   <canvas id="accelChart"></canvas>
 
+  <div class="controls">
+  <button onclick="startReader()">Start</button>
+  <button onclick="stopReader()">Stop</button>
+  <span id="status">Status: unknown</span>
+  </div>
+
+
+  // Chart.js
   <script>
     const ctx = document.getElementById('accelChart').getContext('2d');
 
@@ -53,7 +61,7 @@
         animation: false,
         responsive: true,
         scales: {
-          x: { title: { display: true, text: 'Timestamp (ms)' } },
+          x: { title: { display: true, text: 'Time (s)' } },
           y: { title: { display: true, text: 'Acceleration' } }
         }
       }
@@ -68,7 +76,7 @@
         const response = await fetch('/data');
         const buffer = await response.json(); // expects [{timestamp, ax, ay, az}, ...]
         
-        data.labels = buffer.map(d => d.timestamp);
+        data.labels = buffer.map(d => new Date(d.timestamp * 1000).toLocaleTimeString());
         data.datasets[0].data = buffer.map(d => d.ax);
         data.datasets[1].data = buffer.map(d => d.ay);
         data.datasets[2].data = buffer.map(d => d.az);
@@ -83,8 +91,35 @@
       }
     }
 
-    // Poll server every 100ms
-    setInterval(fetchData, 100);
+    // // Poll server every 100ms
+    // setInterval(fetchData, 100);
+
+    // Poll server every 500ms
+    setInterval(fetchData, 500);
   </script>
+
+
+  // endpoints
+  <script>
+  async function startReader() {
+    await fetch("/api/start", { method: "POST" });
+    updateStatus();
+  }
+
+  async function stopReader() {
+    await fetch("/api/stop", { method: "POST" });
+    updateStatus();
+  }
+
+  async function updateStatus() {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    document.getElementById("status").innerText =
+      "Status: " + (data.running ? "RUNNING" : "STOPPED");
+  }
+
+  setInterval(updateStatus, 1000);
+  </script>
+
 </body>
 </html>
