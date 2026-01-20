@@ -24,7 +24,7 @@ WEB_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../web")
 # Initialize modules
 # ------------------------------
 buffer = TelemetryBuffer(maxlen=BUFFER_SIZE)
-csv_logger = CSVLogger(CSV_PATH)
+csv_logger = CSVLogger(directory="/app/logs")
 if USE_DUMMY:
     from dummy_reader import DummyReader
     reader = DummyReader(buffer, csv_logger)
@@ -64,6 +64,60 @@ def reader_status():
     return {
         "running": reader.running
     }
+
+@app.route("/api/flush", methods=["POST"])
+def flush_csv():
+    if csv_logger:
+        csv_logger.flush()
+        return {"status": "flushed"}
+    else:
+        return {"status": "no_logger"}, 400
+    
+@app.route("/api/flush_restart", methods=["POST"])
+def flush_restart():
+    """
+    Stop the reader, flush the CSV log, then restart the reader.
+    Returns the new CSV filename and status.
+    """
+    if not reader:
+        return {"status": "no_reader"}, 400
+
+    reader.stop(wait=True)
+
+    if csv_logger:
+        csv_logger.flush()
+        new_file = csv_logger.filepath
+    else:
+        new_file = None
+
+    reader.start()
+
+    return {"status": "restarted", "file": new_file}
+
+import glob
+
+@app.route("/api/delete_logs", methods=["POST"])
+def delete_logs():
+    """
+    Delete all CSV files in the logger's directory.
+    Stops the reader before deletion to prevent writing to removed files.
+    """
+    if reader:
+        reader.stop(wait=True)
+
+    deleted_files = []
+    if csv_logger:
+        log_dir = csv_logger.directory
+        for filepath in glob.glob(f"{log_dir}/*.csv"):
+            try:
+                os.remove(filepath)
+                deleted_files.append(filepath)
+            except Exception as e:
+                print(f"Error deleting {filepath}: {e}")
+
+    return {"status": "deleted", "files": deleted_files}
+
+
 
 # ------------------------------
 # App start / shutdown hooks

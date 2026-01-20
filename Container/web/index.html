@@ -2,32 +2,219 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Telemetry Plot</title>
+  <title>Telemetry Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
       font-family: Arial, sans-serif;
-      margin: 20px;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+      color: #333;
     }
+
+    header {
+      background: #007acc;
+      color: white;
+      padding: 20px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.8em;
+    }
+
+    main {
+      max-width: 1000px;
+      margin: 20px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+    }
+
     canvas {
-      max-width: 800px;
+      max-width: 100%;
       max-height: 400px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 20px;
+      align-items: center;
+    }
+
+    .controls button {
+      padding: 10px 15px;
+      font-size: 0.9em;
+      border: none;
+      border-radius: 5px;
+      background: #007acc;
+      color: white;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .controls button:hover {
+      background: #005f99;
+    }
+
+    .controls span {
+      margin-left: 10px;
+      font-weight: bold;
+    }
+
+    .info {
+      margin-top: 30px;
+      padding: 15px;
+      background: #eef6fc;
+      border-left: 4px solid #007acc;
+      border-radius: 5px;
+    }
+
+    .info h2 {
+      margin-top: 0;
+    }
+
+    .info ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    /* Legend boxes */
+    .legend-boxes {
+      display: flex;
+      gap: 15px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .legend-box {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .color-box {
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+    }
+
+    /* Mobile adjustments */
+    @media (max-width: 600px) {
+      .controls {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .legend-boxes {
+        justify-content: flex-start;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Real-Time Accelerometer Data</h1>
-  <canvas id="accelChart"></canvas>
+  <header>
+    <h1>Telemetry Dashboard</h1>
+  </header>
 
-  <div class="controls">
-  <button onclick="startReader()">Start</button>
-  <button onclick="stopReader()">Stop</button>
-  <span id="status">Status: unknown</span>
-  </div>
+  
+  <main>
+    <h2>Real-Time Accelerometer Data</h2>
+    <canvas id="accelChart"></canvas>
+
+    <div class="legend-boxes">
+      <div class="legend-box"><div class="color-box" style="background:red"></div> Ax</div>
+      <div class="legend-box"><div class="color-box" style="background:green"></div> Ay</div>
+      <div class="legend-box"><div class="color-box" style="background:blue"></div> Az</div>
+    </div>
+
+    <div class="controls">
+      <button onclick="startReader()">Start</button>
+      <button onclick="stopReader()">Stop</button>
+      <button onclick="flushRestart()">New CSV Log</button>
+      <button onclick="deleteLogs()">Delete All Logs</button>
+      <span id="status">Status: unknown</span>
+      <br>
+      <span id="currentFile">Current CSV: none</span>
+    </div>
+
+    <div class="info">
+      <h2>How to Use</h2>
+      <ul>
+        <li><strong>Start:</strong> Begin telemetry reading from the device or dummy data.</li>
+        <li><strong>Stop:</strong> Pause telemetry reading without losing previous data.</li>
+        <li><strong>New CSV Log:</strong> Stop current logging, start a new CSV file with timestamped name, and resume reading.</li>
+        <li><strong>Delete All Logs:</strong> Permanently remove all CSV files from the logs folder.</li>
+        <li>The chart shows <strong>Ax, Ay, Az</strong> accelerometer axes in real time.</li>
+        <li><strong>Status</strong> and <strong>Current CSV</strong> indicate the reader state and log file.</li>
+      </ul>
+    </div>
+  </main>
+
+<script>
+  // ----- Reader control functions -----
+  async function startReader() {
+    await fetch("/api/start", { method: "POST" });
+    updateStatus();
+  }
+
+  async function stopReader() {
+    await fetch("/api/stop", { method: "POST" });
+    updateStatus();
+  }
+
+  async function flushRestart() {
+    try {
+      const res = await fetch("/api/flush_restart", { method: "POST" });
+      const data = await res.json();
+      console.log("Flush & Restart response:", data);
+      document.getElementById("currentFile").innerText =
+        "Current CSV: " + data.file;
+      updateStatus();
+    } catch (err) {
+      console.error("Error flushing & restarting:", err);
+    }
+  }
+
+  async function deleteLogs() {
+    if (!confirm("Are you sure you want to delete all CSV logs? This cannot be undone.")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/delete_logs", { method: "POST" });
+      const data = await res.json();
+      console.log("Deleted files:", data.files);
+      alert(`Deleted ${data.files.length} CSV files.`);
+      document.getElementById("currentFile").innerText = "Current CSV: none";
+      updateStatus();
+    } catch (err) {
+      console.error("Error deleting logs:", err);
+    }
+  }
+
+  // ----- Status display -----
+  async function updateStatus() {
+    try {
+      const res = await fetch("/api/status");
+      const data = await res.json();
+      document.getElementById("status").innerText =
+        "Status: " + (data.running ? "RUNNING" : "STOPPED");
+    } catch (err) {
+      console.error("Error fetching status:", err);
+    }
+  }
+
+  // Poll the reader status every 1 second
+  setInterval(updateStatus, 1000);
+</script>
 
 
-  // Chart.js
+
   <script>
+    // ----- Chart setup -----
     const ctx = document.getElementById('accelChart').getContext('2d');
 
     const data = {
@@ -54,18 +241,30 @@
       ]
     };
 
-    const config = {
-      type: 'line',
-      data: data,
-      options: {
-        animation: false,
-        responsive: true,
-        scales: {
-          x: { title: { display: true, text: 'Time (s)' } },
-          y: { title: { display: true, text: 'Acceleration' } }
+  const config = {
+    type: 'line',
+    data: data,
+    options: {
+      animation: false,
+      responsive: true,
+      scales: {
+        x: {
+          type: 'category', 
+          title: { display: true, text: 'Time (HH:MM:SS.mmm)' },
+          ticks: {
+            maxRotation: 45,
+            autoSkip: true,
+            maxTicksLimit: 10
+          }
+        },
+        y: {
+          type: 'linear',
+          title: { display: true, text: 'Acceleration' }
         }
       }
-    };
+    }
+  };
+
 
     const accelChart = new Chart(ctx, config);
 
@@ -76,7 +275,9 @@
         const response = await fetch('/data');
         const buffer = await response.json(); // expects [{timestamp, ax, ay, az}, ...]
         
-        data.labels = buffer.map(d => new Date(d.timestamp * 1000).toLocaleTimeString());
+        data.labels = buffer.map(d => {
+          return d.human_ts.slice(11);
+        });
         data.datasets[0].data = buffer.map(d => d.ax);
         data.datasets[1].data = buffer.map(d => d.ay);
         data.datasets[2].data = buffer.map(d => d.az);
@@ -91,34 +292,9 @@
       }
     }
 
-    // // Poll server every 100ms
-    // setInterval(fetchData, 100);
-
-    // Poll server every 500ms
-    setInterval(fetchData, 500);
-  </script>
-
-
-  // endpoints
-  <script>
-  async function startReader() {
-    await fetch("/api/start", { method: "POST" });
-    updateStatus();
-  }
-
-  async function stopReader() {
-    await fetch("/api/stop", { method: "POST" });
-    updateStatus();
-  }
-
-  async function updateStatus() {
-    const res = await fetch("/api/status");
-    const data = await res.json();
-    document.getElementById("status").innerText =
-      "Status: " + (data.running ? "RUNNING" : "STOPPED");
-  }
-
-  setInterval(updateStatus, 1000);
+    // Poll server every 100ms
+    setInterval(fetchData, 100);
+    
   </script>
 
 </body>

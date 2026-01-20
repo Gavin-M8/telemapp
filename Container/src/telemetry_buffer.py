@@ -10,7 +10,7 @@ class TelemetryBuffer:
         self.buffer = deque(maxlen=maxlen)
         self.lock = threading.Lock()  # Thread-safe access
 
-    def add(self, timestamp, ax, ay, az):
+    def add(self, timestamp, human_ts, ax, ay, az):
         """
         Add a new telemetry sample.
         :param timestamp: Timestamp in ms
@@ -21,6 +21,7 @@ class TelemetryBuffer:
         with self.lock:
             self.buffer.append({
                 "timestamp": timestamp,
+                "human_ts": human_ts,
                 "ax": ax,
                 "ay": ay,
                 "az": az

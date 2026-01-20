@@ -22,10 +22,16 @@ class DummyReader:
         self.thread = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
-    def stop(self):
+    def stop(self, wait=True):
+        """
+        Stop the reader thread.
+
+        Args:
+            wait (bool): If True, wait for the thread to fully exit.
+        """
         self.running = False
-        if self.thread:
-            self.thread.join(timeout=1)
+        if self.thread and wait:
+            self.thread.join(timeout=2)
             self.thread = None
 
     def _run(self):
@@ -45,7 +51,7 @@ class DummyReader:
             ay = math.sin(2 * math.pi * 0.7 * t + 1)
             az = 0.5 * math.sin(2 * math.pi * 1.0 * t)
 
-            self.buffer.add(timestamp, ax, ay, az)
+            self.buffer.add(timestamp, human_ts, ax, ay, az)
 
             if self.csv_logger:
                 self.csv_logger.write(timestamp, human_ts, ax, ay, az)
