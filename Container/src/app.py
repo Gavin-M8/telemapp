@@ -117,6 +117,19 @@ def delete_logs():
 
     return {"status": "deleted", "files": deleted_files}
 
+@app.route("/api/start_log", methods=["POST"])
+def start_log():
+    if csv_logger:
+        csv_logger.start_log()
+        return {"status": "ok", "file": csv_logger.filename}
+    return {"status": "error", "file": None}
+
+@app.route("/api/stop_log", methods=["POST"])
+def stop_log():
+    if csv_logger:
+        csv_logger.stop_log()
+        return {"status": "ok"}
+    return {"status": "error"}
 
 
 # ------------------------------

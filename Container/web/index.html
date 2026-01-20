@@ -130,31 +130,35 @@
       <div class="legend-box"><div class="color-box" style="background:blue"></div> Az</div>
     </div>
 
-    <div class="controls">
+    <div class="controls" style="margin-top:20px;">
       <button onclick="startReader()">Start</button>
       <button onclick="stopReader()">Stop</button>
-      <button onclick="flushRestart()">New CSV Log</button>
+      <button onclick="startLogging()">New CSV Log</button>
+      <button onclick="stopLogging()">Stop Logging</button>
       <button onclick="deleteLogs()">Delete All Logs</button>
-      <span id="status">Status: unknown</span>
+      <span id="status" style="margin-left:10px;">Status: unknown</span>
       <br>
       <span id="currentFile">Current CSV: none</span>
     </div>
 
     <div class="info">
-      <h2>How to Use</h2>
+      <h2>How to Use:</h2>
       <ul>
-        <li><strong>Start:</strong> Begin telemetry reading from the device or dummy data.</li>
-        <li><strong>Stop:</strong> Pause telemetry reading without losing previous data.</li>
-        <li><strong>New CSV Log:</strong> Stop current logging, start a new CSV file with timestamped name, and resume reading.</li>
-        <li><strong>Delete All Logs:</strong> Permanently remove all CSV files from the logs folder.</li>
-        <li>The chart shows <strong>Ax, Ay, Az</strong> accelerometer axes in real time.</li>
-        <li><strong>Status</strong> and <strong>Current CSV</strong> indicate the reader state and log file.</li>
+        <li><strong>Start:</strong> Begin receiving and plotting telemetry data. Data will appear on the chart in real time.</li>
+        <li><strong>Stop:</strong> Pause data reception and plotting. The reader thread stops temporarily.</li>
+        <li><strong>New CSV Log:</strong> Start logging data to a new CSV file with a timestamped filename. Data continues to plot while logging.</li>
+        <li><strong>Stop Logging:</strong> Stop writing to the current CSV file. Plotting continues uninterrupted.</li>
+        <li><strong>Delete All Logs:</strong> Permanently remove all CSV files from the logs folder. Use with caution!</li>
+        <li>The chart displays the <strong>Ax, Ay, Az</strong> accelerometer axes in real time.</li>
+        <li>The <strong>Status</strong> indicator shows whether the reader is RUNNING or STOPPED.</li>
+        <li>The <strong>Current CSV</strong> indicator shows which file is currently being logged (or none).</li>
+        <li>Time on the X-axis is shown as <strong>HH:MM:SS.mmm</strong> for easy readability.</li>
       </ul>
     </div>
   </main>
 
 <script>
-  // ----- Reader control functions -----
+  // ----- Reader control -----
   async function startReader() {
     await fetch("/api/start", { method: "POST" });
     updateStatus();
@@ -165,30 +169,36 @@
     updateStatus();
   }
 
-  async function flushRestart() {
+  // ----- Logging control -----
+  async function startLogging() {
     try {
-      const res = await fetch("/api/flush_restart", { method: "POST" });
+      const res = await fetch("/api/start_log", { method: "POST" });
       const data = await res.json();
-      console.log("Flush & Restart response:", data);
-      document.getElementById("currentFile").innerText =
-        "Current CSV: " + data.file;
-      updateStatus();
+      document.getElementById("currentFile").innerText = "Current CSV: " + data.file;
+      alert("Started new CSV log: " + data.file);
     } catch (err) {
-      console.error("Error flushing & restarting:", err);
+      console.error("Error starting CSV log:", err);
+    }
+  }
+
+  async function stopLogging() {
+    try {
+      const res = await fetch("/api/stop_log", { method: "POST" });
+      const data = await res.json();
+      document.getElementById("currentFile").innerText = "Current CSV: none";
+      alert("CSV logging stopped.");
+    } catch (err) {
+      console.error("Error stopping CSV log:", err);
     }
   }
 
   async function deleteLogs() {
-    if (!confirm("Are you sure you want to delete all CSV logs? This cannot be undone.")) {
-      return;
-    }
-
+    if (!confirm("Are you sure you want to delete all CSV logs?")) return;
     try {
       const res = await fetch("/api/delete_logs", { method: "POST" });
       const data = await res.json();
-      console.log("Deleted files:", data.files);
-      alert(`Deleted ${data.files.length} CSV files.`);
       document.getElementById("currentFile").innerText = "Current CSV: none";
+      alert(`Deleted ${data.files.length} CSV files.`);
       updateStatus();
     } catch (err) {
       console.error("Error deleting logs:", err);
@@ -206,11 +216,8 @@
       console.error("Error fetching status:", err);
     }
   }
-
-  // Poll the reader status every 1 second
   setInterval(updateStatus, 1000);
 </script>
-
 
 
   <script>

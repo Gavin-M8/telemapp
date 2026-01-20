@@ -1,5 +1,6 @@
 from datetime import datetime
 import os
+import time
 
 class CSVLogger:
     """
@@ -17,52 +18,49 @@ class CSVLogger:
     and saved in the specified directory.
     """
 
-    def __init__(self, directory="logs"):
+    def __init__(self, directory=None):
         """
-        Initialize the CSV logger.
-
-        Args:
-            directory (str): Directory to save CSV files.
+        If directory is None, no logging occurs until start_log() is called.
         """
         self.directory = directory
-        os.makedirs(directory, exist_ok=True)
         self.file = None
         self.filepath = None
-        self.start_new_log()  # create first log file
+        
 
-    def start_new_log(self):
+    def start_log(self):
         """
-        Create a new CSV file with a unique timestamped filename.
-        Ensures the file does not already exist.
+        Start logging to a new CSV file using a timestamped filename.
         """
-        if self.file:
-            self.file.close()
 
-        # create unique filename with milliseconds
-        while True:
-            human_ts_filename = datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f")[:-3]  # include ms
-            filepath = os.path.join(self.directory, f"telemetry-{human_ts_filename}.csv")
-            if not os.path.exists(filepath):
-                break  # unique name found
+        if self.directory is None:
+            raise RuntimeError("No logging directory specified.")
+        
+        t = time.localtime()
+        human_ts = time.strftime("%Y%m%d-%H%M%S", t)
+        self.filename = f"telemetry-{human_ts}.csv"
 
-        self.filepath = filepath
-        self.file = open(self.filepath, "w", buffering=1)  # line-buffered
-        self.file.write("timestamp,human_ts,ax,ay,az\n")  # header
+        os.makedirs(self.directory, exist_ok=True)
+        self.filepath = os.path.join(self.directory, self.filename)
+        self.file = open(self.filepath, "w")
+        self.file.write("timestamp,human_ts,ax,ay,az\n")
+
+        print(f"CSVLogger: started new log {self.filename}")
+
 
     def write(self, timestamp, human_ts, ax, ay, az):
         """
-        Write a row to the CSV file.
+        Write a single row to the CSV file if logging is active.
+        """
+        if self.file:
+            self.file.write(f"{timestamp},{human_ts},{ax},{ay},{az}\n")
+            self.file.flush()
 
-        Args:
-            timestamp (float): Unix epoch seconds
-            ax (float): acceleration x-axis
-            ay (float): acceleration y-axis
-            az (float): acceleration z-axis
-        """
-        self.file.write(f"{timestamp},{human_ts},{ax},{ay},{az}\n")
 
-    def flush(self):
+    def stop_log(self):
         """
-        Close the current CSV file and start a new one with a unique timestamp.
+        Stop logging and close the current CSV file.
         """
-        self.start_new_log()
+        if self.file:
+            self.file.close()
+            print(f"CSVLogger: stopped log {self.filename}")
+            self.file = None
