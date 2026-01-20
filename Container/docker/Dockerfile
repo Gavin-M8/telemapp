@@ -6,6 +6,10 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # Ensure stdout/stderr are unbuffered (important for logs)
 ENV PYTHONUNBUFFERED=1
 
+# set timezone to MST
+ENV TZ=America/Denver
+RUN apt-get update && apt-get install -y tzdata
+
 # Application working directory
 WORKDIR /app
 

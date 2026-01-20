@@ -131,6 +131,10 @@ def stop_log():
         return {"status": "ok"}
     return {"status": "error"}
 
+@app.route("/latest")
+def latest():
+    data = buffer.get_all()
+    return data[-1:] if data else []
 
 # ------------------------------
 # App start / shutdown hooks
