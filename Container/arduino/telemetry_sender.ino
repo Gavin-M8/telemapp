@@ -1,5 +1,5 @@
 
-// this shows up as underfined because it's not being compiled by something that works with Arduino code; use PlatformIO or the Arduino IDE
+// this shows up as undefined because it's not being compiled by something that works with Arduino code; use PlatformIO or the Arduino IDE
 #include <Wire.h>
 
 // === CONFIGURATION ===
@@ -22,8 +22,8 @@ void setup() {
   // Optional: wait for serial to be ready (safe on Nano)
   delay(100);
 
-  // Optional CSV header (recommended)
-  Serial.println("timestamp_ms,ax,ay,az");
+  // // Optional CSV header (recommended)
+  // Serial.println("timestamp_ms,ax,ay,az");
 }
 
 void loop() {

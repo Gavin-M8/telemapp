@@ -2,6 +2,8 @@ import serial
 import threading
 from telemetry_buffer import TelemetryBuffer
 from csv_logger import CSVLogger
+from datetime import datetime
+
 
 class SerialReader:
     def __init__(self, port, baud_rate, buffer: TelemetryBuffer, csv_logger: CSVLogger):
@@ -48,16 +50,21 @@ class SerialReader:
                     if len(parts) != 4:
                         continue  # Malformed line
                     try:
-                        timestamp = int(parts[0])
+                        timestamp = int(parts[0])  # epoch ms or seconds, from Arduino
+                        
                         ax = float(parts[1])
                         ay = float(parts[2])
                         az = float(parts[3])
+                        
+                        human_ts = datetime.fromtimestamp(timestamp / 1000).strftime(
+                            '%Y-%m-%d %H:%M:%S.%f'
+                        )[:-3]
+
                     except ValueError:
                         continue  # Skip lines with invalid numbers
 
-                    # Add to buffer
-                    self.buffer.add(timestamp, ax, ay, az)
-                    # Append to CSV
-                    self.csv_logger.write(timestamp, ax, ay, az)
+                    self.buffer.add(timestamp, human_ts, ax, ay, az)
+                    self.csv_logger.write(timestamp, human_ts, ax, ay, az)
+
         except serial.SerialException as e:
             print(f"Serial error on {self.port}: {e}")
