@@ -3,6 +3,7 @@ from flask import Flask, jsonify, send_from_directory
 from telemetry_buffer import TelemetryBuffer
 from csv_logger import CSVLogger
 from serial_reader import SerialReader
+from telemetry_processor import TelemetryProcessor
 import logging
 
 log = logging.getLogger('werkzeug')
@@ -25,12 +26,14 @@ WEB_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../web")
 # ------------------------------
 buffer = TelemetryBuffer(maxlen=BUFFER_SIZE)
 csv_logger = CSVLogger(directory="/app/logs")
+processor = TelemetryProcessor()  # NEW: Real-time telemetry processor
+
 if USE_DUMMY:
     from dummy_reader import DummyReader
-    reader = DummyReader(buffer, csv_logger)
+    reader = DummyReader(buffer, csv_logger, processor)
 else:
     from serial_reader import SerialReader
-    reader = SerialReader(SERIAL_PORT, BAUD_RATE, buffer, csv_logger)
+    reader = SerialReader(SERIAL_PORT, BAUD_RATE, buffer, csv_logger, processor)
 
 # ------------------------------
 # Flask app
@@ -47,6 +50,43 @@ def get_data():
     Return current telemetry buffer as JSON for live plotting.
     """
     return jsonify(buffer.get_all())
+
+# ------------------------------
+# NEW: Derived Telemetry Endpoints
+# ------------------------------
+
+@app.route('/api/stats')
+def get_stats():
+    """
+    Get derived telemetry statistics (max g-forces, velocity, events, etc.)
+    """
+    return jsonify(processor.get_stats())
+
+@app.route('/api/gg_data')
+def get_gg_data():
+    """
+    Get G-G diagram data (lateral vs longitudinal acceleration history)
+    """
+    return jsonify(processor.get_gg_data())
+
+@app.route('/api/current')
+def get_current():
+    """
+    Get current smoothed acceleration values
+    """
+    return jsonify(processor.get_smoothed_current())
+
+@app.route('/api/reset_stats', methods=['POST'])
+def reset_stats():
+    """
+    Reset all derived statistics (for starting a new run)
+    """
+    processor.reset()
+    return {"status": "reset"}
+
+# ------------------------------
+# Existing Endpoints
+# ------------------------------
 
 @app.route("/api/start", methods=["POST"])
 def start_reader():
@@ -121,6 +161,8 @@ def delete_logs():
 def start_log():
     if csv_logger:
         csv_logger.start_log()
+        # Reset stats when starting a new log
+        processor.reset()
         return {"status": "ok", "file": csv_logger.filename}
     return {"status": "error", "file": None}
 
@@ -152,4 +194,3 @@ if __name__ == '__main__':
     finally:
         reader.stop()
         csv_logger.close()
-

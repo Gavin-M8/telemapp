@@ -4,9 +4,10 @@ import math
 from datetime import datetime
 
 class DummyReader:
-    def __init__(self, buffer, csv_logger=None, sample_rate_hz=50):
+    def __init__(self, buffer, csv_logger=None, processor=None, sample_rate_hz=50):
         self.buffer = buffer
         self.csv_logger = csv_logger
+        self.processor = processor
         self.sample_period = 1.0 / sample_rate_hz
 
         self.running = False
@@ -37,7 +38,7 @@ class DummyReader:
     def _run(self):
         print("DummyReader thread entered _run()")
 
-        # sample counter for debuggung
+        # sample counter for debugging
         self._counter = 0   # initialize once per thread
 
         while self.running:
@@ -46,15 +47,26 @@ class DummyReader:
             human_ts = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
             # e.g. "2026-01-19 14:45:06.859"
 
-            # Fake accelerometer signals
-            ax = math.sin(2 * math.pi * 0.5 * t)
-            ay = math.sin(2 * math.pi * 0.7 * t + 1)
-            az = 0.5 * math.sin(2 * math.pi * 1.0 * t)
+            # Fake accelerometer signals - simulate realistic car motion
+            # Longitudinal: simulate some acceleration and braking
+            ax = 0.3 * math.sin(2 * math.pi * 0.2 * t)  # Gentle acceleration/braking
+            if int(t) % 20 < 5:  # Every 20 seconds, brake hard for 5 seconds
+                ax = -0.6
+            
+            # Lateral: simulate cornering
+            ay = 0.4 * math.sin(2 * math.pi * 0.15 * t + 1)
+            
+            # Vertical: simulate bumps and road surface
+            az = -1.0 + 0.1 * math.sin(2 * math.pi * 2.0 * t)  # -1g baseline (gravity) + small bumps
 
             self.buffer.add(timestamp, human_ts, ax, ay, az)
 
             if self.csv_logger:
                 self.csv_logger.write(timestamp, human_ts, ax, ay, az)
+            
+            # NEW: Process data for derived telemetry
+            if self.processor:
+                self.processor.process(timestamp, ax, ay, az)
 
             # sample counter for debugging
             self._counter += 1

@@ -2,22 +2,25 @@ import serial
 import threading
 from telemetry_buffer import TelemetryBuffer
 from csv_logger import CSVLogger
+from telemetry_processor import TelemetryProcessor
 from datetime import datetime
 
 
 class SerialReader:
-    def __init__(self, port, baud_rate, buffer: TelemetryBuffer, csv_logger: CSVLogger):
+    def __init__(self, port, baud_rate, buffer: TelemetryBuffer, csv_logger: CSVLogger, processor: TelemetryProcessor = None):
         """
         Initialize the serial reader.
         :param port: Serial port (e.g., /dev/ttyUSB0)
         :param baud_rate: Baud rate for Arduino serial
         :param buffer: TelemetryBuffer instance
         :param csv_logger: CSVLogger instance
+        :param processor: TelemetryProcessor instance (optional)
         """
         self.port = port
         self.baud_rate = baud_rate
         self.buffer = buffer
         self.csv_logger = csv_logger
+        self.processor = processor
         self.thread = None
         self.running = False
 
@@ -28,11 +31,16 @@ class SerialReader:
             self.thread = threading.Thread(target=self._read_loop, daemon=True)
             self.thread.start()
 
-    def stop(self):
-        """Stop the serial reading thread."""
+    def stop(self, wait=True):
+        """
+        Stop the serial reading thread.
+        
+        Args:
+            wait (bool): If True, wait for the thread to fully exit.
+        """
         self.running = False
-        if self.thread is not None:
-            self.thread.join()
+        if self.thread is not None and wait:
+            self.thread.join(timeout=2)
             self.thread = None
 
     def _read_loop(self):
@@ -56,15 +64,22 @@ class SerialReader:
                         ay = float(parts[2])
                         az = float(parts[3])
                         
-                        human_ts = datetime.fromtimestamp(timestamp / 1000).strftime(
+                        # Convert timestamp to seconds if it's in milliseconds
+                        timestamp_sec = timestamp / 1000.0 if timestamp > 1e10 else timestamp
+                        
+                        human_ts = datetime.fromtimestamp(timestamp_sec).strftime(
                             '%Y-%m-%d %H:%M:%S.%f'
                         )[:-3]
 
                     except ValueError:
                         continue  # Skip lines with invalid numbers
 
-                    self.buffer.add(timestamp, human_ts, ax, ay, az)
-                    self.csv_logger.write(timestamp, human_ts, ax, ay, az)
+                    self.buffer.add(timestamp_sec, human_ts, ax, ay, az)
+                    self.csv_logger.write(timestamp_sec, human_ts, ax, ay, az)
+                    
+                    # NEW: Process data for derived telemetry
+                    if self.processor:
+                        self.processor.process(timestamp_sec, ax, ay, az)
 
         except serial.SerialException as e:
             print(f"Serial error on {self.port}: {e}")
