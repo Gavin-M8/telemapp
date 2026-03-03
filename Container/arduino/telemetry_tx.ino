@@ -18,8 +18,7 @@ int readAccelZ() { return analogRead(A2); }
 const byte address[6] = "00001"; 
 
 struct payload { 
-   byte data1; 
-   char data2; 
+   char data1[32]; 
 }; 
 payload dataPacket; 
 
@@ -70,19 +69,12 @@ void loop() {
     snprintf(dataPacket.data1, sizeof(dataPacket.data1), "%lu,%d,%d,%d", now, ax, ay, az);
   }
 
-//    dataPacket.data1++; 
-//    dataPacket.data2 = 'x'; 
+   bool report = radio.write(&dataPacket, sizeof(dataPacket));
 
-//    Serial.print("Sending: ");
-//    Serial.print(dataPacket.data1);
-
-//    bool report = radio.write(&dataPacket, sizeof(dataPacket));
-
-//    if (report) {
-//      Serial.println(" ... SUCCESS!");
-//    } else {
-//      Serial.println(" ... FAILED (No Ack)");
-//    }
-
-//    delay(INTERVAL_MS_TRANSMISSION); 
+   if (report) {
+     Serial.println(" ... SUCCESS!");
+   } else {
+     Serial.println(" ... FAILED (No Ack)");
+   }
+ 
 }

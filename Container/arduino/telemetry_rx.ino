@@ -12,8 +12,7 @@ RF24 radio(CE_PIN, CSN_PIN);
 const byte address[6] = "00001"; 
 
 struct payload { 
-   byte data1; 
-   char data2; 
+   char data1[32]; 
 }; 
 
 payload incomingData; 
@@ -50,7 +49,7 @@ void loop()
      radio.read(&incomingData, sizeof(payload)); 
      
     //  Serial.print("Received - Data1: "); 
-     Serial.print(incomingData.data1);  
+     Serial.println(incomingData.data1);  
      
      lastSignalMillis = millis(); // Reset the "timeout" clock
    } 
