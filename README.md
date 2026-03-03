@@ -1,7 +1,6 @@
 # Telemapp
----
 
-A complete system for collecting, processing, and visualizing accelerometer data in real-time.
+Note: look at README in Container directory for more info
 
 ## Features
 
