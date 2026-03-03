@@ -1,6 +1,6 @@
 # Telemapp
 
-Note: look at README in Container directory for more info
+Note: this is an AI generated placeholder README, I'm working on a better one inside the Container directory.
 
 ## Features
 
