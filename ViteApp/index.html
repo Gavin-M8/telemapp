@@ -37,7 +37,7 @@
       <div class="tracker-card tracker-accel" id="currentAccelCard">
         <div class="tracker-label">ACCELERATION</div>
         <div class="tracker-value" id="currentAccel">0.00</div>
-        <div class="tracker-unit">G</div>
+        <div class="tracker-unit">G &nbsp;<span class="tracker-unit-sub">derived</span></div>
         <div class="tracker-bar-wrap"><div class="tracker-bar accel-bar" id="accelBar"></div></div>
       </div>
     </div>
@@ -45,24 +45,24 @@
     <!-- Secondary Stats -->
     <div class="stats-grid">
       <div class="stat-card">
+        <div class="stat-label">MAX SPEED</div>
+        <div class="stat-value" id="maxSpeed">0.0<span class="stat-unit">mph</span></div>
+      </div>
+      <div class="stat-card">
         <div class="stat-label">MAX ACCEL</div>
-        <div class="stat-value" id="maxAccel">0.00<span class="stat-unit">g</span></div>
+        <div class="stat-value" id="maxAccel">0.000<span class="stat-unit">g</span></div>
       </div>
       <div class="stat-card">
         <div class="stat-label">MAX BRAKE</div>
-        <div class="stat-value" id="maxBrake">0.00<span class="stat-unit">g</span></div>
+        <div class="stat-value" id="maxBrake">0.000<span class="stat-unit">g</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">MAX LATERAL</div>
-        <div class="stat-value" id="maxLateral">0.00<span class="stat-unit">g</span></div>
+        <div class="stat-label">DISTANCE</div>
+        <div class="stat-value" id="distanceMiles">0.00<span class="stat-unit">mi</span></div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">CORNERS</div>
-        <div class="stat-value" id="totalCorners">0</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">BRAKE EVENTS</div>
-        <div class="stat-value" id="totalBraking">0</div>
+        <div class="stat-label">HEADING</div>
+        <div class="stat-value" id="currentHeading">0<span class="stat-unit">°</span></div>
       </div>
     </div>
 
@@ -70,23 +70,17 @@
     <div class="charts-container">
       <div class="chart-wrapper">
         <div class="chart-header">
-          <span class="chart-title">ACCELERATION <span class="accent">// Ax Ay Az</span></span>
-          <div class="chart-legend">
-            <span class="leg leg-ax">AX</span>
-            <span class="leg leg-ay">AY</span>
-            <span class="leg leg-az">AZ</span>
-          </div>
-        </div>
-        <canvas id="accelChart"></canvas>
-      </div>
-
-      <div class="chart-wrapper">
-        <div class="chart-header">
           <span class="chart-title">SPEED <span class="accent">// mph</span></span>
         </div>
         <canvas id="speedChart"></canvas>
       </div>
 
+      <div class="chart-wrapper">
+        <div class="chart-header">
+          <span class="chart-title">ACCELERATION <span class="accent">// g (derived)</span></span>
+        </div>
+        <canvas id="accelChart"></canvas>
+      </div>
     </div>
 
     <!-- Controls -->

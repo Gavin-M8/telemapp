@@ -3,16 +3,34 @@ import time
 import math
 from datetime import datetime
 
-class DummyReader:
-    def __init__(self, buffer, csv_logger=None, processor=None, sample_rate_hz=50):
-        self.buffer = buffer
-        self.csv_logger = csv_logger
-        self.processor = processor
-        self.sample_period = 1.0 / sample_rate_hz
 
-        self.running = False
-        self.thread = None
-        self.t0 = time.time()
+class DummyReader:
+    """
+    Simulated GPS reader for testing without hardware.
+
+    Simulates a car doing laps around a small oval track near Denver, CO.
+    Speed varies realistically with acceleration and braking phases.
+    Position is derived from the simulated heading and speed.
+    """
+
+    # Track center (Denver area)
+    CENTER_LAT = 39.7500
+    CENTER_LON = -105.0000
+
+    # Track semi-axes in degrees (~150m × ~200m oval)
+    RADIUS_LAT = 0.00135   # ~150 m
+    RADIUS_LON = 0.00180   # ~200 m (lon degrees are shorter at this latitude)
+
+    LAP_SECONDS = 30       # One full lap in seconds
+
+    def __init__(self, buffer, csv_logger=None, processor=None, sample_rate_hz=10):
+        self.buffer      = buffer
+        self.csv_logger  = csv_logger
+        self.processor   = processor
+        self.sample_period = 1.0 / sample_rate_hz
+        self.running     = False
+        self.thread      = None
+        self.t0          = time.time()
 
     def start(self):
         if self.running:
@@ -20,16 +38,10 @@ class DummyReader:
             return
         print("DummyReader starting thread")
         self.running = True
-        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread  = threading.Thread(target=self._run, daemon=True)
         self.thread.start()
 
     def stop(self, wait=True):
-        """
-        Stop the reader thread.
-
-        Args:
-            wait (bool): If True, wait for the thread to fully exit.
-        """
         self.running = False
         if self.thread and wait:
             self.thread.join(timeout=2)
@@ -37,40 +49,45 @@ class DummyReader:
 
     def _run(self):
         print("DummyReader thread entered _run()")
-
-        # sample counter for debugging
-        self._counter = 0   # initialize once per thread
+        counter = 0
 
         while self.running:
-            t = time.time() - self.t0
-            timestamp = time.time()  # seconds since epoch
-            human_ts = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
-            # e.g. "2026-01-19 14:45:06.859"
+            t         = time.time() - self.t0
+            timestamp = time.time()
+            human_ts  = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
-            # Fake accelerometer signals - simulate realistic car motion
-            # Longitudinal: simulate some acceleration and braking
-            ax = 0.3 * math.sin(2 * math.pi * 0.2 * t)  # Gentle acceleration/braking
-            if int(t) % 20 < 5:  # Every 20 seconds, brake hard for 5 seconds
-                ax = -0.6
-            
-            # Lateral: simulate cornering
-            ay = 0.4 * math.sin(2 * math.pi * 0.15 * t + 1)
-            
-            # Vertical: simulate bumps and road surface
-            az = -1.0 + 0.1 * math.sin(2 * math.pi * 2.0 * t)  # -1g baseline (gravity) + small bumps
+            # --- Position: parametric oval ---
+            angle = 2 * math.pi * t / self.LAP_SECONDS
+            lat   = self.CENTER_LAT + self.RADIUS_LAT * math.sin(angle)
+            lon   = self.CENTER_LON + self.RADIUS_LON * math.cos(angle)
 
-            self.buffer.add(timestamp, human_ts, ax, ay, az)
+            # Heading: tangent direction (derivative of position vector, normalised)
+            dlat = self.RADIUS_LAT * math.cos(angle)
+            dlon = -self.RADIUS_LON * math.sin(angle)
+            heading = (math.degrees(math.atan2(dlon, dlat))) % 360
+
+            # --- Speed: sinusoidal base with hard-braking phases ---
+            # Base: 20–55 mph, one cycle per lap
+            speed_mph = 37.5 + 17.5 * math.sin(2 * angle)
+
+            # Hard braking for 3 s every 30 s (at the "bottom" of the oval)
+            phase_in_lap = t % self.LAP_SECONDS
+            if phase_in_lap < 3.0:
+                speed_mph = max(5.0, speed_mph - 30.0)
+
+            speed_mph = max(0.0, speed_mph)
+
+            # --- Feed pipeline ---
+            self.buffer.add(timestamp, human_ts, lat, lon, speed_mph, heading)
 
             if self.csv_logger:
-                self.csv_logger.write(timestamp, human_ts, ax, ay, az)
-            
-            # NEW: Process data for derived telemetry
-            if self.processor:
-                self.processor.process(timestamp, ax, ay, az)
+                self.csv_logger.write(timestamp, human_ts, lat, lon, speed_mph, heading)
 
-            # sample counter for debugging
-            self._counter += 1
-            if self._counter % 100 == 0:
-                print(f"Generated {self._counter} samples")
+            if self.processor:
+                self.processor.process(timestamp, lat, lon, speed_mph, heading)
+
+            counter += 1
+            if counter % 100 == 0:
+                print(f"DummyReader: generated {counter} samples")
 
             time.sleep(self.sample_period)

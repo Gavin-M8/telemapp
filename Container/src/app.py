@@ -14,7 +14,9 @@ log.setLevel(logging.ERROR)
 # Configuration from environment
 # ------------------------------
 USE_DUMMY = os.getenv("USE_DUMMY", "false").lower() == "true"
-SERIAL_PORT = os.getenv("SERIAL_PORT", "/dev/ttyUSB0")
+import sys
+_default_port = "COM5" if sys.platform == "win32" else "/dev/ttyUSB0"
+SERIAL_PORT = os.getenv("SERIAL_PORT", _default_port)
 BAUD_RATE = int(os.getenv("BAUD_RATE", 19200))
 CSV_PATH = os.getenv("CSV_PATH", "logs/telemetry.csv")
 BUFFER_SIZE = int(os.getenv("BUFFER_SIZE", 200))
@@ -62,19 +64,19 @@ def get_stats():
     """
     return jsonify(processor.get_stats())
 
-@app.route('/api/gg_data')
-def get_gg_data():
+@app.route('/api/position_history')
+def get_position_history():
     """
-    Get G-G diagram data (lateral vs longitudinal acceleration history)
+    Get recent GPS position history (list of {lat, lon}) for track visualization.
     """
-    return jsonify(processor.get_gg_data())
+    return jsonify(processor.get_position_history())
 
 @app.route('/api/current')
 def get_current():
     """
-    Get current smoothed acceleration values
+    Get current GPS snapshot: lat, lon, speed_mph, heading, accel_g.
     """
-    return jsonify(processor.get_smoothed_current())
+    return jsonify(processor.get_current())
 
 @app.route('/api/reset_stats', methods=['POST'])
 def reset_stats():
@@ -102,7 +104,8 @@ def stop_reader():
 @app.route("/api/status")
 def reader_status():
     return {
-        "running": reader.running
+        "running": reader.running,
+        "has_fix": processor.get_stats().get("has_fix", False),
     }
 
 @app.route("/api/flush", methods=["POST"])

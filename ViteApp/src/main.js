@@ -2,8 +2,9 @@ import './style.css';
 
 const MAX_POINTS = 200;
 
-// Local speed history (sampled from /api/stats since backend has no speed time-series)
+// Client-side history arrays (speed from buffer, accel derived server-side)
 const speedHistory = { labels: [], values: [] };
+const accelHistory = { labels: [], values: [] };
 
 // ── Chart defaults ────────────────────────────────────────────────────────────
 Chart.defaults.color = '#7ab8d4';
@@ -13,34 +14,7 @@ Chart.defaults.font.family = "'Share Tech Mono', monospace";
 const gridStyle = { color: 'rgba(0,212,255,0.07)', drawTicks: false };
 const tickStyle = { color: '#4a7a94', maxTicksLimit: 6, padding: 8 };
 
-// ── Acceleration chart ────────────────────────────────────────────────────────
-const accelChart = new Chart(
-  document.getElementById('accelChart').getContext('2d'),
-  {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        { label: 'Ax', data: [], borderColor: '#ff5577', backgroundColor: 'rgba(255,85,119,0.05)', borderWidth: 1.5, fill: true, tension: 0.3, pointRadius: 0 },
-        { label: 'Ay', data: [], borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.05)', borderWidth: 1.5, fill: true, tension: 0.3, pointRadius: 0 },
-        { label: 'Az', data: [], borderColor: '#4488ff', backgroundColor: 'rgba(68,136,255,0.05)', borderWidth: 1.5, fill: true, tension: 0.3, pointRadius: 0 },
-      ],
-    },
-    options: {
-      animation: false,
-      responsive: true,
-      maintainAspectRatio: true,
-      aspectRatio: 2.5,
-      scales: {
-        x: { type: 'category', ticks: { ...tickStyle, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: gridStyle },
-        y: { title: { display: true, text: 'g', color: '#4a7a94' }, ticks: tickStyle, grid: gridStyle },
-      },
-      plugins: { legend: { display: false } },
-    },
-  }
-);
-
-// ── Speed chart ───────────────────────────────────────────────────────────────
+// ── Speed chart (fed from /data buffer) ──────────────────────────────────────
 const speedChart = new Chart(
   document.getElementById('speedChart').getContext('2d'),
   {
@@ -72,35 +46,70 @@ const speedChart = new Chart(
   }
 );
 
+// ── Derived acceleration chart (fed from /api/current poll) ──────────────────
+const accelChart = new Chart(
+  document.getElementById('accelChart').getContext('2d'),
+  {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Accel',
+        data: [],
+        borderColor: '#ff5577',
+        backgroundColor: 'rgba(255,85,119,0.05)',
+        borderWidth: 1.5,
+        fill: true,
+        tension: 0.3,
+        pointRadius: 0,
+      }],
+    },
+    options: {
+      animation: false,
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 2.5,
+      scales: {
+        x: { type: 'category', ticks: { ...tickStyle, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: gridStyle },
+        y: { title: { display: true, text: 'g', color: '#4a7a94' }, ticks: tickStyle, grid: gridStyle },
+      },
+      plugins: { legend: { display: false } },
+    },
+  }
+);
+
 // ── Clock ─────────────────────────────────────────────────────────────────────
 function updateClock() {
-  const now = new Date();
-  document.getElementById('clock').textContent =
-    now.toTimeString().slice(0, 8);
+  const now  = new Date();
+  const h24  = now.getHours();
+  const h12  = h24 % 12 || 12;
+  const ampm = h24 < 12 ? 'AM' : 'PM';
+  const mm   = String(now.getMinutes()).padStart(2, '0');
+  const ss   = String(now.getSeconds()).padStart(2, '0');
+  document.getElementById('clock').textContent = `${h12}:${mm}:${ss} ${ampm}`;
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-// ── Fetch acceleration time series ───────────────────────────────────────────
+// ── Fetch buffer → speed chart ────────────────────────────────────────────────
 async function fetchData() {
   try {
     const res = await fetch('/data');
     const buf = await res.json();
+    if (!buf.length) return;
 
     const labels = buf.map(d => d.human_ts.slice(11, 19)).slice(-MAX_POINTS);
-    accelChart.data.labels             = labels;
-    accelChart.data.datasets[0].data   = buf.map(d => d.ax).slice(-MAX_POINTS);
-    accelChart.data.datasets[1].data   = buf.map(d => d.ay).slice(-MAX_POINTS);
-    accelChart.data.datasets[2].data   = buf.map(d => d.az).slice(-MAX_POINTS);
-    accelChart.update('none');
+    speedChart.data.labels           = labels;
+    speedChart.data.datasets[0].data = buf.map(d => d.speed_mph).slice(-MAX_POINTS);
+    speedChart.update('none');
   } catch (err) {
     console.error('fetchData:', err);
   }
 }
 
-// ── Fetch stats + update everything ──────────────────────────────────────────
-const MAX_SPEED = 80; // mph — top of speed bar scale
-const MAX_ACCEL_G = 1.5;
+// ── Fetch stats + current → update all HUD elements ─────────────────────────
+const MAX_SPEED_SCALE = 80;   // mph — top of speed bar
+const MAX_ACCEL_G     = 1.0;  // g   — top of accel bar
 
 async function updateStats() {
   try {
@@ -111,39 +120,45 @@ async function updateStats() {
     const stats   = await statsRes.json();
     const current = await currentRes.json();
 
-    // ── Primary tracker: speed ────────────────────────────────────────────
-    const mph = stats.velocity_mph;
+    // ── Primary: velocity ─────────────────────────────────────────────────
+    const mph = stats.speed_mph;
     document.getElementById('velocity').textContent = mph.toFixed(1);
     document.getElementById('speedBar').style.width =
-      Math.min(100, (mph / MAX_SPEED) * 100).toFixed(1) + '%';
+      Math.min(100, (mph / MAX_SPEED_SCALE) * 100).toFixed(1) + '%';
 
-    // Speed history chart
-    const now = new Date().toTimeString().slice(0, 8);
-    speedHistory.labels.push(now);
-    speedHistory.values.push(mph);
-    if (speedHistory.labels.length > MAX_POINTS) {
-      speedHistory.labels.shift();
-      speedHistory.values.shift();
-    }
-    speedChart.data.labels           = speedHistory.labels;
-    speedChart.data.datasets[0].data = speedHistory.values;
-    speedChart.update('none');
-
-    // ── Primary tracker: current accel ───────────────────────────────────
-    const ax = current.ax;
-    document.getElementById('currentAccel').textContent = ax.toFixed(2);
+    // ── Primary: derived acceleration ────────────────────────────────────
+    const ag = current.accel_g;
+    document.getElementById('currentAccel').textContent = ag.toFixed(3);
     document.getElementById('accelBar').style.width =
-      Math.min(100, (Math.abs(ax) / MAX_ACCEL_G) * 100).toFixed(1) + '%';
+      Math.min(100, (Math.abs(ag) / MAX_ACCEL_G) * 100).toFixed(1) + '%';
 
-    const accelCard = document.getElementById('currentAccelCard');
-    accelCard.classList.toggle('highlight', stats.in_braking || stats.in_corner);
+    // Highlight card while braking
+    document.getElementById('currentAccelCard')
+      .classList.toggle('highlight', stats.in_braking);
 
     // ── Secondary stats ───────────────────────────────────────────────────
-    document.getElementById('maxAccel').innerHTML   = `${stats.max_accel.toFixed(2)}<span class="stat-unit">g</span>`;
-    document.getElementById('maxBrake').innerHTML   = `${stats.max_brake.toFixed(2)}<span class="stat-unit">g</span>`;
-    document.getElementById('maxLateral').innerHTML = `${stats.max_lateral.toFixed(2)}<span class="stat-unit">g</span>`;
-    document.getElementById('totalCorners').textContent      = stats.total_corners;
-    document.getElementById('totalBraking').textContent      = stats.total_braking_events;
+    document.getElementById('maxSpeed').innerHTML =
+      `${stats.max_speed_mph.toFixed(1)}<span class="stat-unit">mph</span>`;
+    document.getElementById('maxAccel').innerHTML =
+      `${stats.max_accel_g.toFixed(3)}<span class="stat-unit">g</span>`;
+    document.getElementById('maxBrake').innerHTML =
+      `${stats.max_decel_g.toFixed(3)}<span class="stat-unit">g</span>`;
+    document.getElementById('distanceMiles').innerHTML =
+      `${stats.distance_miles.toFixed(2)}<span class="stat-unit">mi</span>`;
+    document.getElementById('currentHeading').innerHTML =
+      `${stats.heading.toFixed(0)}<span class="stat-unit">°</span>`;
+
+    // ── Accel history chart ───────────────────────────────────────────────
+    const now = new Date().toTimeString().slice(0, 8);
+    accelHistory.labels.push(now);
+    accelHistory.values.push(ag);
+    if (accelHistory.labels.length > MAX_POINTS) {
+      accelHistory.labels.shift();
+      accelHistory.values.shift();
+    }
+    accelChart.data.labels           = accelHistory.labels;
+    accelChart.data.datasets[0].data = accelHistory.values;
+    accelChart.update('none');
 
   } catch (err) {
     console.error('updateStats:', err);
@@ -159,7 +174,7 @@ async function updateStatus() {
     const txt  = document.getElementById('statusText');
     if (data.running) {
       dot.classList.add('online');
-      txt.textContent = 'ONLINE';
+      txt.textContent = data.has_fix ? 'ONLINE // FIX' : 'ONLINE // NO FIX';
     } else {
       dot.classList.remove('online');
       txt.textContent = 'OFFLINE';
@@ -171,8 +186,8 @@ async function updateStatus() {
 }
 
 // ── Poll ──────────────────────────────────────────────────────────────────────
-setInterval(fetchData,     100);
-setInterval(updateStats,   100);
+setInterval(fetchData,    100);
+setInterval(updateStats,  100);
 setInterval(updateStatus, 1000);
 
 // ── Controls ──────────────────────────────────────────────────────────────────
@@ -205,8 +220,10 @@ document.getElementById('btnStopLog').addEventListener('click', async () => {
 
 document.getElementById('btnResetStats').addEventListener('click', async () => {
   if (!confirm('Reset all performance statistics?')) return;
-  speedHistory.labels.length = 0;
-  speedHistory.values.length = 0;
+  speedHistory.labels.length  = 0;
+  speedHistory.values.length  = 0;
+  accelHistory.labels.length  = 0;
+  accelHistory.values.length  = 0;
   try {
     await fetch('/api/reset_stats', { method: 'POST' });
   } catch (err) { console.error(err); }

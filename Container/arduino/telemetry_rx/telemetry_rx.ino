@@ -11,9 +11,9 @@ RF24 radio(CE_PIN, CSN_PIN);
 
 const byte address[6] = "00001"; 
 
-struct payload { 
-   char data1[32]; 
-}; 
+struct payload {
+   char data1[64];  // Must match transmitter payload size
+};
 
 payload incomingData; 
 unsigned long lastSignalMillis = 0; 
@@ -29,7 +29,7 @@ void setup()
    }
 
    // --- MATCHING CONFIGURATION ---
-   radio.setPALevel(RF24_PA_LOW); 
+   radio.setPALevel(RF24_PA_MAX); 
    radio.setDataRate(RF24_250KBPS);      // Must match Transmitter
    radio.setChannel(100);                // Must match Transmitter
    radio.setPayloadSize(sizeof(payload)); 

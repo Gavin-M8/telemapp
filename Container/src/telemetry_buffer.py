@@ -4,40 +4,29 @@ import threading
 class TelemetryBuffer:
     def __init__(self, maxlen=200):
         """
-        Initialize an in-memory buffer for telemetry data.
+        In-memory circular buffer for GPS telemetry samples.
         :param maxlen: Maximum number of recent samples to keep
         """
         self.buffer = deque(maxlen=maxlen)
-        self.lock = threading.Lock()  # Thread-safe access
+        self.lock = threading.Lock()
 
-    def add(self, timestamp, human_ts, ax, ay, az):
-        """
-        Add a new telemetry sample.
-        :param timestamp: Timestamp in ms
-        :param ax: Acceleration X
-        :param ay: Acceleration Y
-        :param az: Acceleration Z
-        """
+    def add(self, timestamp, human_ts, lat, lon, speed_mph, heading):
+        """Add a new GPS telemetry sample."""
         with self.lock:
             self.buffer.append({
                 "timestamp": timestamp,
-                "human_ts": human_ts,
-                "ax": ax,
-                "ay": ay,
-                "az": az
+                "human_ts":  human_ts,
+                "lat":       lat,
+                "lon":       lon,
+                "speed_mph": speed_mph,
+                "heading":   heading,
             })
 
     def get_all(self):
-        """
-        Return a copy of all samples in the buffer.
-        :return: List of dicts
-        """
+        """Return a copy of all samples in the buffer."""
         with self.lock:
             return list(self.buffer)
 
     def clear(self):
-        """
-        Optional: Clear the buffer.
-        """
         with self.lock:
             self.buffer.clear()

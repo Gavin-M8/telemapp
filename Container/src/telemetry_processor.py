@@ -1,254 +1,202 @@
 import threading
-import time
 import math
 from collections import deque
 
+
+def _haversine_miles(lat1, lon1, lat2, lon2):
+    """Return distance in miles between two GPS coordinates."""
+    R = 3958.8  # Earth radius in miles
+    lat1, lon1, lat2, lon2 = map(math.radians, [lat1, lon1, lat2, lon2])
+    dlat = lat2 - lat1
+    dlon = lon2 - lon1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
 class TelemetryProcessor:
     """
-    Real-time processor for deriving telemetry metrics from accelerometer data.
-    
-    Calculates:
-    - Running max/min g-forces (accel, brake, lateral)
-    - Velocity estimation via integration
-    - G-G diagram data
-    - Event detection (corners, braking, acceleration runs)
-    - Performance metrics (0-60 time, etc.)
+    Real-time processor for GPS telemetry data.
+
+    Receives lat/lon/speed/heading from a NEO-6M GPS module and computes:
+    - Smoothed speed
+    - Derived acceleration (Δv/Δt, in g)
+    - Session max speed, max accel, max decel
+    - Cumulative distance (haversine)
+    - Braking event detection
+    - Position history for track visualization
     """
-    
+
     def __init__(self):
         self.lock = threading.Lock()
-        
+
+        # Current smoothed values
+        self.current_speed_mph = 0.0
+        self.current_accel_g   = 0.0
+        self.current_heading   = 0.0
+        self.current_lat       = None
+        self.current_lon       = None
+        self.has_fix           = False
+
         # Session statistics
-        self.max_accel = 0.0          # Max forward acceleration (g)
-        self.max_brake = 0.0           # Max braking (positive g)
-        self.max_lateral_left = 0.0    # Max left turn (positive g)
-        self.max_lateral_right = 0.0   # Max right turn (positive g)
-        self.max_vertical = 0.0        # Max vertical (g)
-        
-        # Velocity estimation
-        self.velocity = 0.0            # Current velocity (m/s)
-        self.last_timestamp = None
-        
-        # 0-60 tracking
-        self.zero_to_sixty_time = None
-        self.zero_to_sixty_started = False
-        self.accel_run_start_time = None
-        
-        # Event detection
-        self.in_corner = False
-        self.corner_start_time = None
-        self.corner_peak = 0.0
-        self.corner_direction = None
-        self.total_corners = 0
-        
-        self.in_braking = False
-        self.braking_start_time = None
-        self.braking_peak = 0.0
-        self.total_braking_events = 0
-        
-        # Recent history for G-G diagram (last 500 points)
-        self.gg_history = deque(maxlen=500)
-        
-        # Recent acceleration data for smoothing (last 10 samples)
-        self.recent_ax = deque(maxlen=10)
-        self.recent_ay = deque(maxlen=10)
-        self.recent_az = deque(maxlen=10)
-        
-        # Configuration
-        self.corner_threshold = 0.2     # g-force to detect corner
-        self.corner_exit_threshold = 0.15
-        self.braking_threshold = -0.3   # negative g-force to detect braking
-        self.braking_exit_threshold = -0.1
-        self.accel_run_threshold = 0.2  # g-force to start 0-60 timer
-        
+        self.max_speed_mph = 0.0
+        self.max_accel_g   = 0.0   # max forward acceleration (g)
+        self.max_decel_g   = 0.0   # max braking deceleration (positive g)
+        self.distance_miles = 0.0
+
+        # State for derivatives
+        self.last_timestamp    = None
+        self.last_speed_smooth = 0.0
+        self.last_lat          = None
+        self.last_lon          = None
+
+        # Speed smoothing (5-sample moving average reduces GPS noise)
+        self.recent_speeds = deque(maxlen=5)
+
+        # Position history for track map (last 500 points)
+        self.position_history = deque(maxlen=500)
+
+        # Braking event detection
+        self.in_braking             = False
+        self.braking_peak_g         = 0.0
+        self.total_braking_events   = 0
+        self.braking_threshold_g    = -0.15   # decel g to enter braking state
+        self.braking_exit_threshold = -0.05   # decel g to exit braking state
+
+    # ------------------------------------------------------------------
     def reset(self):
-        """Reset all statistics (e.g., for a new run)"""
+        """Reset all session statistics (e.g. for a new run)."""
         with self.lock:
-            self.max_accel = 0.0
-            self.max_brake = 0.0
-            self.max_lateral_left = 0.0
-            self.max_lateral_right = 0.0
-            self.max_vertical = 0.0
-            
-            self.velocity = 0.0
-            self.last_timestamp = None
-            
-            self.zero_to_sixty_time = None
-            self.zero_to_sixty_started = False
-            self.accel_run_start_time = None
-            
-            self.in_corner = False
-            self.corner_start_time = None
-            self.corner_peak = 0.0
-            self.corner_direction = None
-            self.total_corners = 0
-            
-            self.in_braking = False
-            self.braking_start_time = None
-            self.braking_peak = 0.0
+            self.current_speed_mph  = 0.0
+            self.current_accel_g    = 0.0
+            self.current_heading    = 0.0
+            self.current_lat        = None
+            self.current_lon        = None
+            self.has_fix            = False
+
+            self.max_speed_mph      = 0.0
+            self.max_accel_g        = 0.0
+            self.max_decel_g        = 0.0
+            self.distance_miles     = 0.0
+
+            self.last_timestamp     = None
+            self.last_speed_smooth  = 0.0
+            self.last_lat           = None
+            self.last_lon           = None
+
+            self.recent_speeds.clear()
+            self.position_history.clear()
+
+            self.in_braking           = False
+            self.braking_peak_g       = 0.0
             self.total_braking_events = 0
-            
-            self.gg_history.clear()
-            self.recent_ax.clear()
-            self.recent_ay.clear()
-            self.recent_az.clear()
-    
-    def process(self, timestamp, ax, ay, az):
+
+    # ------------------------------------------------------------------
+    def process(self, timestamp, lat, lon, speed_mph, heading):
         """
-        Process a new telemetry sample and update derived metrics.
-        
-        :param timestamp: Unix timestamp (seconds)
-        :param ax: Longitudinal acceleration (g)
-        :param ay: Lateral acceleration (g)
-        :param az: Vertical acceleration (g)
+        Process a new GPS sample.
+
+        :param timestamp:  Unix timestamp (seconds, from system clock)
+        :param lat:        Latitude  (decimal degrees)
+        :param lon:        Longitude (decimal degrees)
+        :param speed_mph:  Speed from GPS (mph)
+        :param heading:    Course/heading (degrees, 0-360)
         """
         with self.lock:
-            # Add to recent history for smoothing
-            self.recent_ax.append(ax)
-            self.recent_ay.append(ay)
-            self.recent_az.append(az)
-            
-            # Calculate smoothed values (moving average)
-            ax_smooth = sum(self.recent_ax) / len(self.recent_ax) if self.recent_ax else ax
-            ay_smooth = sum(self.recent_ay) / len(self.recent_ay) if self.recent_ay else ay
-            az_smooth = sum(self.recent_az) / len(self.recent_az) if self.recent_az else az
-            
-            # Update max/min statistics
-            if ax_smooth > self.max_accel:
-                self.max_accel = ax_smooth
-            if ax_smooth < -self.max_brake:  # Store as positive value
-                self.max_brake = -ax_smooth
-            
-            if ay_smooth > self.max_lateral_left:
-                self.max_lateral_left = ay_smooth
-            if ay_smooth < -self.max_lateral_right:  # Store as positive value
-                self.max_lateral_right = -ay_smooth
-            
-            if abs(az_smooth) > self.max_vertical:
-                self.max_vertical = abs(az_smooth)
-            
-            # Add to G-G diagram history
-            self.gg_history.append({
-                "ax": ax_smooth,
-                "ay": ay_smooth
-            })
-            
-            # Velocity integration
+            # --- Smooth speed ---
+            self.recent_speeds.append(speed_mph)
+            speed_smooth = sum(self.recent_speeds) / len(self.recent_speeds)
+
+            # --- Derive acceleration (g) from Δv/Δt ---
+            accel_g = 0.0
             if self.last_timestamp is not None:
                 dt = timestamp - self.last_timestamp
-                # Only integrate if dt is reasonable (< 1 second to avoid huge jumps)
-                if 0 < dt < 1.0:
-                    # Convert g to m/s² and integrate
-                    self.velocity += ax_smooth * 9.81 * dt
-                    
-                    # Clamp velocity to zero if very small (drift correction)
-                    if abs(self.velocity) < 0.1:
-                        self.velocity = 0.0
-            
-            self.last_timestamp = timestamp
-            
-            # 0-60 mph tracking (26.8 m/s)
-            if not self.zero_to_sixty_started and ax_smooth > self.accel_run_threshold:
-                # Start acceleration run
-                self.zero_to_sixty_started = True
-                self.accel_run_start_time = timestamp
-                self.velocity = 0.0  # Reset velocity at start of run
-            
-            if self.zero_to_sixty_started and self.zero_to_sixty_time is None:
-                if self.velocity >= 26.8:  # 60 mph in m/s
-                    self.zero_to_sixty_time = timestamp - self.accel_run_start_time
-            
-            # Corner detection
-            lateral_g = abs(ay_smooth)
-            
-            if not self.in_corner and lateral_g > self.corner_threshold:
-                # Corner entry
-                self.in_corner = True
-                self.corner_start_time = timestamp
-                self.corner_peak = lateral_g
-                self.corner_direction = "left" if ay_smooth > 0 else "right"
-            
-            if self.in_corner:
-                # Track peak during corner
-                if lateral_g > self.corner_peak:
-                    self.corner_peak = lateral_g
-                
-                # Corner exit
-                if lateral_g < self.corner_exit_threshold:
-                    self.in_corner = False
-                    self.total_corners += 1
-            
-            # Braking detection
-            if not self.in_braking and ax_smooth < self.braking_threshold:
-                # Braking start
-                self.in_braking = True
-                self.braking_start_time = timestamp
-                self.braking_peak = ax_smooth
-            
+                if 0 < dt < 2.0:
+                    # Convert mph → m/s (×0.44704), then normalise by g (9.81 m/s²)
+                    delta_v_ms = (speed_smooth - self.last_speed_smooth) * 0.44704
+                    accel_g = (delta_v_ms / dt) / 9.81
+
+            # --- Update current values ---
+            self.current_speed_mph  = speed_smooth
+            self.current_accel_g    = accel_g
+            self.current_heading    = heading
+            self.current_lat        = lat
+            self.current_lon        = lon
+            self.has_fix            = True
+
+            # --- Session maxima ---
+            if speed_smooth > self.max_speed_mph:
+                self.max_speed_mph = speed_smooth
+            if accel_g > self.max_accel_g:
+                self.max_accel_g = accel_g
+            if accel_g < -self.max_decel_g:
+                self.max_decel_g = -accel_g
+
+            # --- Cumulative distance (haversine) ---
+            if self.last_lat is not None and self.last_lon is not None:
+                d = _haversine_miles(self.last_lat, self.last_lon, lat, lon)
+                if d < 0.1:   # sanity-check: ignore jumps > 0.1 mi between samples
+                    self.distance_miles += d
+
+            # --- Position history ---
+            self.position_history.append({"lat": lat, "lon": lon})
+
+            # --- Braking event detection ---
+            if not self.in_braking and accel_g < self.braking_threshold_g:
+                self.in_braking     = True
+                self.braking_peak_g = accel_g
             if self.in_braking:
-                # Track peak braking force
-                if ax_smooth < self.braking_peak:
-                    self.braking_peak = ax_smooth
-                
-                # Braking end
-                if ax_smooth > self.braking_exit_threshold:
+                if accel_g < self.braking_peak_g:
+                    self.braking_peak_g = accel_g
+                if accel_g > self.braking_exit_threshold:
                     self.in_braking = False
                     self.total_braking_events += 1
-    
+
+            # --- Advance state ---
+            self.last_timestamp    = timestamp
+            self.last_speed_smooth = speed_smooth
+            self.last_lat          = lat
+            self.last_lon          = lon
+
+    # ------------------------------------------------------------------
     def get_stats(self):
-        """
-        Get current derived statistics as a dictionary.
-        
-        :return: Dict of all calculated metrics
-        """
+        """Return all derived session statistics as a dict."""
         with self.lock:
             return {
-                # Session maximums
-                "max_accel": round(self.max_accel, 3),
-                "max_brake": round(self.max_brake, 3),
-                "max_lateral_left": round(self.max_lateral_left, 3),
-                "max_lateral_right": round(self.max_lateral_right, 3),
-                "max_lateral": round(max(self.max_lateral_left, self.max_lateral_right), 3),
-                "max_vertical": round(self.max_vertical, 3),
-                
-                # Velocity
-                "velocity_ms": round(self.velocity, 2),
-                "velocity_mph": round(self.velocity * 2.237, 2),  # Convert m/s to mph
-                "velocity_kph": round(self.velocity * 3.6, 2),    # Convert m/s to km/h
-                
-                # Performance
-                "zero_to_sixty_time": round(self.zero_to_sixty_time, 2) if self.zero_to_sixty_time else None,
-                "zero_to_sixty_in_progress": self.zero_to_sixty_started and self.zero_to_sixty_time is None,
-                
-                # Events
-                "in_corner": self.in_corner,
-                "corner_peak": round(self.corner_peak, 3) if self.in_corner else None,
-                "corner_direction": self.corner_direction if self.in_corner else None,
-                "total_corners": self.total_corners,
-                
-                "in_braking": self.in_braking,
-                "braking_peak": round(abs(self.braking_peak), 3) if self.in_braking else None,
+                # Live values
+                "speed_mph":           round(self.current_speed_mph, 1),
+                "speed_kph":           round(self.current_speed_mph * 1.60934, 1),
+                "accel_g":             round(self.current_accel_g, 3),
+                "heading":             round(self.current_heading, 1),
+                "has_fix":             self.has_fix,
+
+                # Session bests
+                "max_speed_mph":       round(self.max_speed_mph, 1),
+                "max_speed_kph":       round(self.max_speed_mph * 1.60934, 1),
+                "max_accel_g":         round(self.max_accel_g, 3),
+                "max_decel_g":         round(self.max_decel_g, 3),
+
+                # Distance
+                "distance_miles":      round(self.distance_miles, 3),
+                "distance_km":         round(self.distance_miles * 1.60934, 3),
+
+                # Braking events
+                "in_braking":          self.in_braking,
+                "braking_peak_g":      round(abs(self.braking_peak_g), 3) if self.in_braking else None,
                 "total_braking_events": self.total_braking_events,
             }
-    
-    def get_gg_data(self):
-        """
-        Get G-G diagram data (lateral vs longitudinal acceleration).
-        
-        :return: List of {ax, ay} points
-        """
-        with self.lock:
-            return list(self.gg_history)
-    
-    def get_smoothed_current(self):
-        """
-        Get current smoothed acceleration values.
-        
-        :return: Dict with smoothed ax, ay, az
-        """
+
+    def get_current(self):
+        """Return current smoothed GPS snapshot."""
         with self.lock:
             return {
-                "ax": round(sum(self.recent_ax) / len(self.recent_ax), 3) if self.recent_ax else 0.0,
-                "ay": round(sum(self.recent_ay) / len(self.recent_ay), 3) if self.recent_ay else 0.0,
-                "az": round(sum(self.recent_az) / len(self.recent_az), 3) if self.recent_az else 0.0,
+                "lat":       self.current_lat,
+                "lon":       self.current_lon,
+                "speed_mph": round(self.current_speed_mph, 1),
+                "heading":   round(self.current_heading, 1),
+                "accel_g":   round(self.current_accel_g, 3),
             }
+
+    def get_position_history(self):
+        """Return list of recent {lat, lon} points for track visualization."""
+        with self.lock:
+            return list(self.position_history)
